@@ -184,6 +184,27 @@ public class Menu : Bar, IValue<MenuItem?>
     /// </summary>
     private bool? MoveFocus (NavigationDirection direction)
     {
+        // Horizontal menus (e.g. MenuBar) use Left/Right for item navigation; Up/Down must
+        // fall through to the application-level AdvanceFocus instead of being consumed here.
+        if (Orientation != Orientation.Vertical)
+        {
+            return false;
+        }
+
+        // If focus is currently inside an embedded (focusable) control hosted by the focused
+        // MenuItem (e.g. an OptionSelector used as a CommandView), do not consume the arrow
+        // key here. Otherwise this binding swallows keys the embedded control relies on for
+        // its own navigation (and the application-level AdvanceFocus fallback that moves
+        // between the control's items). Fixes the #5735 integration regression while keeping
+        // submenu/root/standalone wrap-around for ordinary menu items. Issue #5201.
+        if (Focused is Shortcut focusedShortcut
+            && focusedShortcut.CommandView is { CanFocus: true }
+            && focusedShortcut.Focused is not null
+            && focusedShortcut.Focused != focusedShortcut)
+        {
+            return false;
+        }
+
         List<View> items = [.. SubViews.Where (v => v is { CanFocus: true, Visible: true, Enabled: true })];
 
         if (items.Count == 0)
