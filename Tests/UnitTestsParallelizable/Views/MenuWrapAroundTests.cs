@@ -342,4 +342,85 @@ public class MenuWrapAroundTests
         Assert.False (subMenu.Visible);
         Assert.True (root.Visible);
     }
+
+    [Fact]
+    public void Wrap_From_Submenu_Item_Closes_Its_Open_Submenu ()
+    {
+        VirtualTimeProvider time = new ();
+        using IApplication app = Application.Create (time);
+        app.Init (DriverRegistry.Names.ANSI);
+        IRunnable runnable = new Runnable ();
+
+        Menu subMenu = new ([new MenuItem { Id = "s1", Title = "S_1" },
+                             new MenuItem { Id = "s2", Title = "S_2" }])
+        { Id = "subMenu" };
+
+        MenuItem r1 = new () { Id = "r1", Title = "_New" };
+        MenuItem rSub = new () { Id = "rSub", Title = "_Themes", SubMenu = subMenu };
+        Menu root = new ([r1, rSub]) { Id = "root" };
+        MenuBarItem bi = new () { Id = "bi", Title = "_File" };
+        PopoverMenu pm = new ();
+        bi.PopoverMenu = pm;
+        pm.Root = root;
+        MenuBar bar = new () { Id = "bar" };
+        bar.Add (bi);
+        View host = new () { Id = "host", CanFocus = true, Width = Dim.Fill (), Height = Dim.Fill () };
+        host.Add (bar);
+        ((View)runnable).Add (host);
+        app.Begin (runnable);
+
+        app.InjectKey (MenuBar.DefaultKey);
+        Assert.Equal ("r1", Focused (app));
+
+        app.InjectKey (Key.CursorDown); // r1 -> rSub; a non-wrap move opens its submenu
+        Assert.Equal ("rSub", Focused (app));
+        Assert.True (subMenu.Visible); // pins the base (non-wrap) auto-open behavior
+
+        app.InjectKey (Key.CursorDown); // wrap rSub -> r1
+        Assert.Equal ("r1", Focused (app));
+
+        // The wrap must still close the submenu left open on rSub
+        Assert.False (subMenu.Visible);
+        Assert.True (root.Visible);
+    }
+
+    [Fact]
+    public void Wrap_From_First_Submenu_Item_Up_Closes_Its_Open_Submenu ()
+    {
+        VirtualTimeProvider time = new ();
+        using IApplication app = Application.Create (time);
+        app.Init (DriverRegistry.Names.ANSI);
+        IRunnable runnable = new Runnable ();
+
+        Menu subMenu = new ([new MenuItem { Id = "s1", Title = "S_1" },
+                             new MenuItem { Id = "s2", Title = "S_2" }])
+        { Id = "subMenu" };
+
+        MenuItem rSub = new () { Id = "rSub", Title = "_Themes", SubMenu = subMenu };
+        MenuItem r2 = new () { Id = "r2", Title = "_Open" };
+        Menu root = new ([rSub, r2]) { Id = "root" };
+        MenuBarItem bi = new () { Id = "bi", Title = "_File" };
+        PopoverMenu pm = new ();
+        bi.PopoverMenu = pm;
+        pm.Root = root;
+        MenuBar bar = new () { Id = "bar" };
+        bar.Add (bi);
+        View host = new () { Id = "host", CanFocus = true, Width = Dim.Fill (), Height = Dim.Fill () };
+        host.Add (bar);
+        ((View)runnable).Add (host);
+        app.Begin (runnable);
+
+        app.InjectKey (MenuBar.DefaultKey);
+        Assert.Equal ("rSub", Focused (app));
+
+        // Opening the menu selects rSub, which opens its submenu (base behavior)
+        Assert.True (subMenu.Visible);
+
+        app.InjectKey (Key.CursorUp); // wrap rSub -> r2
+        Assert.Equal ("r2", Focused (app));
+
+        // The wrap must still close the submenu left open on rSub
+        Assert.False (subMenu.Visible);
+        Assert.True (root.Visible);
+    }
 }

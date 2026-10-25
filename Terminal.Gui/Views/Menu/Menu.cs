@@ -89,8 +89,8 @@ public class Menu : Bar, IValue<MenuItem?>
         ThemeChanges.ThemeChanged += OnThemeChanged;
     }
 
-    // True while a wrap-around navigation is moving focus, so SubMenu show/hide side effects
-    // can be suppressed (see OnSelectedMenuItemChanged). Issue #5201.
+    // True while a wrap-around navigation is moving focus, so the SubMenu of the item the wrap
+    // lands on is not opened (see OnSelectedMenuItemChanged). Issue #5201.
     private bool _isWrapNavigation;
 
     private void OnThemeChanged (object? sender, App.EventArgs<string> e)
@@ -250,8 +250,9 @@ public class Menu : Bar, IValue<MenuItem?>
         }
 
         // A wrap crosses a menu boundary (the last item wraps to the first, or the first wraps to
-        // the last). A wrap must not open or close any SubMenu, so suppress the selection side
-        // effects while focus moves. Issue #5201.
+        // the last). A wrap must not open the SubMenu of the item it lands on, so suppress the
+        // show side effect while focus moves; SubMenus left open on peer items still get closed
+        // by OnSelectedMenuItemChanged. Issue #5201.
         bool isWrap = direction == NavigationDirection.Forward ? index == items.Count - 1 : index == 0;
 
         // Report the key as handled even if SetFocus fails: an unhandled key would fall through to
@@ -300,17 +301,18 @@ public class Menu : Bar, IValue<MenuItem?>
     /// <param name="selected">The newly selected <see cref="MenuItem"/>, or <see langword="null"/> if none.</param>
     protected virtual void OnSelectedMenuItemChanged (MenuItem? selected)
     {
-        // Wrap-around navigation must not open or close any SubMenu (Issue #5201): skip the
-        // show/hide side effects when the selection changed due to a wrap.
-        if (_isWrapNavigation)
-        {
-            return;
-        }
-
-        // Hide any visible peer SubMenus
+        // Hide any visible peer SubMenus. This must run even for wrap-around navigation so a
+        // submenu left open on a peer item gets closed (Issue #5201).
         foreach (MenuItem mi in SubViews.OfType<MenuItem> ().Where (mi => mi != selected && mi.SubMenu is { Visible: true }))
         {
             mi.SubMenu!.HideMenu ();
+        }
+
+        // A wrap must not open the SubMenu of the item it lands on (Issue #5201): skip the show
+        // side effect when the selection changed due to a wrap.
+        if (_isWrapNavigation)
+        {
+            return;
         }
 
         if (selected?.SubMenu is not { Visible: false })
