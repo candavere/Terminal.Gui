@@ -89,6 +89,10 @@ public class Menu : Bar, IValue<MenuItem?>
         ThemeChanges.ThemeChanged += OnThemeChanged;
     }
 
+    // True while a wrap-around navigation is moving focus, so SubMenu show/hide side effects
+    // can be suppressed (see OnSelectedMenuItemChanged). Issue #5201.
+    private bool _isWrapNavigation;
+
     private void OnThemeChanged (object? sender, App.EventArgs<string> e)
     {
         if (SuperView is { })
@@ -191,18 +195,30 @@ public class Menu : Bar, IValue<MenuItem?>
             return false;
         }
 
-        // If focus is currently inside an embedded (focusable) control hosted by the focused
-        // MenuItem (e.g. an OptionSelector used as a CommandView), do not consume the arrow
-        // key here. Otherwise this binding swallows keys the embedded control relies on for
-        // its own navigation (and the application-level AdvanceFocus fallback that moves
-        // between the control's items). Fixes the #5735 integration regression while keeping
-        // submenu/root/standalone wrap-around for ordinary menu items. Issue #5201.
+        // When focus is inside an embedded (focusable) control hosted by the focused MenuItem's
+        // CommandView (e.g. an OptionSelector), the control gets the arrow key first: advance its
+        // internal focus by one step if it can, keeping focus inside the control. Only when the
+        // control is at its internal boundary does the key fall through to this menu's own
+        // wrap-around computation below, so navigation continues with the next (or previous) menu
+        // item instead of escaping the menu through the application-level navigation fallback.
+        // Issue #5201.
         if (Focused is Shortcut focusedShortcut
-            && focusedShortcut.CommandView is { CanFocus: true }
-            && focusedShortcut.Focused is not null
-            && focusedShortcut.Focused != focusedShortcut)
+            && focusedShortcut.CommandView is { CanFocus: true } commandView
+            && focusedShortcut.Focused is not null)
         {
-            return false;
+            View? focusedBefore = commandView.MostFocused;
+
+            if (commandView.AdvanceFocus (direction, TabBehavior.TabStop) && commandView.HasFocus)
+            {
+                // The control consumed the key; focus stayed inside it.
+                return true;
+            }
+
+            // The probe must never leave focus outside the CommandView; restore it if it did.
+            if (!commandView.HasFocus && focusedBefore is { })
+            {
+                focusedBefore.SetFocus ();
+            }
         }
 
         List<View> items = [.. SubViews.Where (v => v is { CanFocus: true, Visible: true, Enabled: true })];
@@ -233,7 +249,26 @@ public class Menu : Bar, IValue<MenuItem?>
             return true;
         }
 
-        return items [next].SetFocus ();
+        // A wrap crosses a menu boundary (the last item wraps to the first, or the first wraps to
+        // the last). A wrap must not open or close any SubMenu, so suppress the selection side
+        // effects while focus moves. Issue #5201.
+        bool isWrap = direction == NavigationDirection.Forward ? index == items.Count - 1 : index == 0;
+
+        // Report the key as handled even if SetFocus fails: an unhandled key would fall through to
+        // the application-level navigation fallback (CursorDown/Up -> AdvanceFocus), which can move
+        // focus out of this menu. Keeping focus where it was matches the don't-escape intent.
+        _isWrapNavigation = isWrap;
+
+        try
+        {
+            items [next].SetFocus ();
+        }
+        finally
+        {
+            _isWrapNavigation = false;
+        }
+
+        return true;
     }
 
     /// <inheritdoc/>
@@ -265,6 +300,13 @@ public class Menu : Bar, IValue<MenuItem?>
     /// <param name="selected">The newly selected <see cref="MenuItem"/>, or <see langword="null"/> if none.</param>
     protected virtual void OnSelectedMenuItemChanged (MenuItem? selected)
     {
+        // Wrap-around navigation must not open or close any SubMenu (Issue #5201): skip the
+        // show/hide side effects when the selection changed due to a wrap.
+        if (_isWrapNavigation)
+        {
+            return;
+        }
+
         // Hide any visible peer SubMenus
         foreach (MenuItem mi in SubViews.OfType<MenuItem> ().Where (mi => mi != selected && mi.SubMenu is { Visible: true }))
         {

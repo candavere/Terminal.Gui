@@ -1,6 +1,3 @@
-using UnitTests;
-using UnitTests.Parallelizable;
-
 namespace ViewsTests;
 
 public class MenuWrapAroundTests
@@ -95,7 +92,6 @@ public class MenuWrapAroundTests
         return (app, menu);
     }
 
-    // OpenCode
     [Fact]
     public void Submenu_Down_From_Last_Wraps_To_First ()
     {
@@ -112,7 +108,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Submenu_Up_From_First_Wraps_To_Last ()
     {
@@ -127,7 +122,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Root_Down_From_Last_Wraps_To_First ()
     {
@@ -143,7 +137,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Root_Up_From_First_Wraps_To_Last ()
     {
@@ -155,7 +148,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Standalone_Menu_Down_From_Last_Wraps_To_First ()
     {
@@ -173,7 +165,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Standalone_Menu_Up_From_First_Wraps_To_Last ()
     {
@@ -187,7 +178,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Standalone_Menu_With_Peer_Down_From_Last_Wraps_To_First ()
     {
@@ -205,7 +195,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Standalone_Menu_With_Peer_Up_From_First_Wraps_To_Last ()
     {
@@ -219,7 +208,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Submenu_Wrap_Skips_Separator_And_Disabled ()
     {
@@ -247,7 +235,6 @@ public class MenuWrapAroundTests
         }
     }
 
-    // OpenCode
     [Fact]
     public void Nested_Submenu_Wrap ()
     {
@@ -299,7 +286,6 @@ public class MenuWrapAroundTests
         Assert.True (nested.Visible);
     }
 
-    // OpenCode
     [Fact]
     public void Submenu_With_Single_Focusable_Item_Stays ()
     {
@@ -317,5 +303,43 @@ public class MenuWrapAroundTests
             Assert.Equal ("only", Focused (app));
             Assert.True (subMenu.Visible);
         }
+    }
+
+    [Fact]
+    public void Wrap_Onto_Submenu_Item_Does_Not_Open_Submenu ()
+    {
+        VirtualTimeProvider time = new ();
+        using IApplication app = Application.Create (time);
+        app.Init (DriverRegistry.Names.ANSI);
+        IRunnable runnable = new Runnable ();
+
+        Menu subMenu = new ([new MenuItem { Id = "s1", Title = "S_1" },
+                             new MenuItem { Id = "s2", Title = "S_2" }])
+        { Id = "subMenu" };
+
+        MenuItem r1 = new () { Id = "r1", Title = "_New" };
+        MenuItem r2 = new () { Id = "r2", Title = "_Open" };
+        MenuItem rSub = new () { Id = "rSub", Title = "_Themes", SubMenu = subMenu };
+        Menu root = new ([r1, r2, rSub]) { Id = "root" };
+        MenuBarItem bi = new () { Id = "bi", Title = "_File" };
+        PopoverMenu pm = new ();
+        bi.PopoverMenu = pm;
+        pm.Root = root;
+        MenuBar bar = new () { Id = "bar" };
+        bar.Add (bi);
+        View host = new () { Id = "host", CanFocus = true, Width = Dim.Fill (), Height = Dim.Fill () };
+        host.Add (bar);
+        ((View)runnable).Add (host);
+        app.Begin (runnable);
+
+        app.InjectKey (MenuBar.DefaultKey);
+        Assert.Equal ("r1", Focused (app));
+
+        app.InjectKey (Key.CursorUp); // wrap r1 -> rSub
+        Assert.Equal ("rSub", Focused (app));
+
+        // The wrap must not open (or close) any submenu
+        Assert.False (subMenu.Visible);
+        Assert.True (root.Visible);
     }
 }
