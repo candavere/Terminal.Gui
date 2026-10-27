@@ -85,6 +85,19 @@ public class Menu : Bar, IValue<MenuItem?>
         KeyBindings.Add (Key.CursorUp, Command.Up);
         AddCommand (Command.Down, _ => MoveFocus (NavigationDirection.Forward));
         AddCommand (Command.Up, _ => MoveFocus (NavigationDirection.Backward));
+        KeyBindings.Add (Key.CursorLeft, Command.Left);
+        AddCommand (Command.Left, _ =>
+        {
+            // Submenu ownership is a menu contract, not a selector's internal arrow contract.
+            // Root and horizontal menus retain their existing Left routing.
+            if (Orientation != Orientation.Vertical || SuperMenuItem is not { SuperView: Menu { Orientation: Orientation.Vertical } } owner)
+            {
+                return false;
+            }
+            owner.SetFocus ();
+
+            return true;
+        });
 
         ThemeChanges.ThemeChanged += OnThemeChanged;
     }
@@ -246,6 +259,17 @@ public class Menu : Bar, IValue<MenuItem?>
         // keep focus here and report success so focus does not escape to a parent view.
         if (items [next] == focused)
         {
+            // A submenu containing only a selector has no peer menu item to move to.
+            // At the selector's boundary, cycle its focusable options without changing Value.
+            if (focused is Shortcut { CommandView: SelectorBase selector })
+            {
+                List<View> options = [.. selector.SubViews.Where (v => v is { CanFocus: true, Visible: true, Enabled: true })];
+                if (options.Count > 0)
+                {
+                    (direction == NavigationDirection.Forward ? options [0] : options [^1]).SetFocus ();
+                }
+            }
+
             return true;
         }
 
